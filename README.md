@@ -14,9 +14,7 @@ It's the *workload* image. The Jenkinsfile says `agent { docker { image '...' } 
 
 ## Why bother publishing it
 
-I used to `docker build -t dotnetworkqueue-ci:latest .` straight on Unraid. That was fine until it wasn't: a reboot, a `docker system prune`, a daemon migration, any of those quietly removed the local image. Then Jenkins would try to "pull" it, fall back to Docker Hub, hit a 404, and sit in the queue forever waiting for an executor that was never coming. Took me an embarrassing amount of time to figure out what was happening the second time it broke.
-
-Publishing means Jenkins can pull it like any other image, and a missing local copy turns into a normal "image not found" instead of a silent forever-queue.
+I used to `docker build -t dotnetworkqueue-ci:latest .` straight on Unraid. That was fine until it wasn't: a reboot, a `docker system prune`, a daemon migration, any of those quietly removed the local image. Then Jenkins would try to "pull" it, fall back to Docker Hub, hit a 404, and sit in the queue forever waiting for an executor that was never coming. 
 
 ## Tags
 
@@ -40,8 +38,6 @@ In the Docker Cloud plugin's Agent Template:
 | Labels | `docker` *(matches `agent { label 'docker' }` in DotNetWorkQueue's Jenkinsfile)* |
 | Remote File System Root | `/home/jenkins` |
 
-There's no Docker CLI inside this image. If a stage ever needs to run `docker build` from inside the container, either point that stage at `blehnen74/jenkins-agent-with-docker`, or add `docker-ce-cli` here and rebuild.
-
 ## Rebuilds
 
 `publish.yml` rebuilds on every push to `main`, on a Monday 06:00 UTC cron (so SDK patches and Debian CVEs land within a week), on `v*` tags, and whenever I run it manually.
@@ -52,7 +48,7 @@ The .NET 10 SDK floats with the base image, so the weekly rebuild picks up whate
 
 Two repo secrets:
 
-- `DOCKERHUB_USERNAME` — `blehnen74`
-- `DOCKERHUB_TOKEN` — a Docker Hub access token with Read, Write, and Delete on `blehnen74/dotnetworkqueue-ci`. Generate one at <https://hub.docker.com/settings/security>.
+- `DOCKERHUB_USERNAME` — `username`
+- `DOCKERHUB_TOKEN` — a Docker Hub access token with Read, Write, and Delete on `target`. Generate one at <https://hub.docker.com/settings/security>.
 
 Once both are set, push to `main` (or fire `workflow_dispatch`) and the first image lands on Docker Hub.
