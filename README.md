@@ -1,49 +1,35 @@
 # dotnetworkqueue-ci
 
-Multi-SDK .NET CI image for [`blehnen/DotNetWorkQueue`](https://github.com/blehnen/DotNetWorkQueue).
+CI image for [DotNetWorkQueue](https://github.com/blehnen/DotNetWorkQueue). Built and published so my Jenkins on Unraid stops losing the local copy every time the box reboots.
 
-Bakes in:
+What's in it:
 
-- .NET 10 SDK (from `mcr.microsoft.com/dotnet/sdk:10.0`)
-- .NET 8 SDK side-by-side (DotNetWorkQueue's Dashboard projects target `net8.0`)
-- OpenJDK 21 JRE (the Jenkins inbound-agent JNLP loader)
+- .NET 10 SDK (the `mcr.microsoft.com/dotnet/sdk:10.0` base)
+- .NET 8 SDK alongside it, because the Dashboard projects still target `net8.0`
+- OpenJDK 21 JRE, so the Jenkins inbound-agent JAR can launch
 - `git`, `curl`, `openssh-client`, `procps`, `libsqlite3-0`
-- `libdl.so` symlink workaround for System.Data.SQLite on glibc ≥ 2.34
+- A `libdl.so` symlink, because System.Data.SQLite's native loader still dlopens it and Bookworm doesn't ship one
 
-Companion to [`blehnen/jenkins-with-docker`](https://github.com/blehnen/jenkins-with-docker)
-(controller) and [`blehnen/jenkins-agent-with-docker`](https://github.com/blehnen/jenkins-agent-with-docker)
-(generic build agent + Docker CLI). This image is the **workload**
-that `agent { docker { image '...' } }` Jenkinsfiles spin up — not a
-Jenkins inbound agent itself.
+It's the *workload* image. The Jenkinsfile says `agent { docker { image '...' } }`, this is the `'...'`. The build agent itself (with the Docker CLI baked in) lives over at [jenkins-agent-with-docker](https://github.com/blehnen/jenkins-agent-with-docker).
 
-## Why this exists
+## Why bother publishing it
 
-DotNetWorkQueue's Jenkins build needs a multi-SDK environment plus a
-Java runtime plus a SQLite native loader workaround. The public
-`mcr.microsoft.com/dotnet/sdk` image carries one SDK and no JDK. We were
-hand-building this image directly on the Unraid host with
-`docker build -t dotnetworkqueue-ci:latest .` and the local image kept
-disappearing across host reboots — Jenkins would then fall back to
-pulling from Docker Hub, hit a 404, and queue the build forever.
+I used to `docker build -t dotnetworkqueue-ci:latest .` straight on Unraid. That was fine until it wasn't: a reboot, a `docker system prune`, a daemon migration, any of those quietly removed the local image. Then Jenkins would try to "pull" it, fall back to Docker Hub, hit a 404, and sit in the queue forever waiting for an executor that was never coming. Took me an embarrassing amount of time to figure out what was happening the second time it broke.
 
-Publishing means Jenkins can use a normal pull strategy
-("Pull once and update latest") and no longer cares whether the host
-has a stashed copy.
+Publishing means Jenkins can pull it like any other image, and a missing local copy turns into a normal "image not found" instead of a silent forever-queue.
 
-## Image
+## Tags
 
 ```
-blehnen74/dotnetworkqueue-ci:weekly             # tracks main, current SDKs
+blehnen74/dotnetworkqueue-ci:weekly             # tracks main
 blehnen74/dotnetworkqueue-ci:latest             # alias for :weekly
-blehnen74/dotnetworkqueue-ci:weekly-YYYYMMDD    # weekly rebuild snapshot
-blehnen74/dotnetworkqueue-ci:vX.Y.Z             # tagged pin (optional)
+blehnen74/dotnetworkqueue-ci:weekly-YYYYMMDD    # snapshot of a particular weekly build
+blehnen74/dotnetworkqueue-ci:vX.Y.Z             # explicit pin if you tag a release
 ```
 
-`linux/amd64` only. The consuming Jenkins host is x86_64 — adding
-`linux/arm64` is a one-line `platforms:` change in `publish.yml` if a
-future build node ever needs it.
+`linux/amd64` only. Unraid box is x86_64 and I don't have an arm64 build node. If you do, change one line in `publish.yml`.
 
-## Usage in Jenkins
+## Wiring it into Jenkins
 
 In the Docker Cloud plugin's Agent Template:
 
@@ -54,41 +40,19 @@ In the Docker Cloud plugin's Agent Template:
 | Labels | `docker` *(matches `agent { label 'docker' }` in DotNetWorkQueue's Jenkinsfile)* |
 | Remote File System Root | `/home/jenkins` |
 
-The image does **not** ship a Docker CLI. If a future Jenkinsfile stage
-needs to call `docker build` from inside the container, either:
-- swap to `blehnen74/jenkins-agent-with-docker` for that stage, or
-- add `docker-ce-cli` to this image's Dockerfile and rebuild.
+There's no Docker CLI inside this image. If a stage ever needs to run `docker build` from inside the container, either point that stage at `blehnen74/jenkins-agent-with-docker`, or add `docker-ce-cli` here and rebuild.
 
-## Build cadence
+## Rebuilds
 
-`publish.yml` runs:
+`publish.yml` rebuilds on every push to `main`, on a Monday 06:00 UTC cron (so SDK patches and Debian CVEs land within a week), on `v*` tags, and whenever I run it manually.
 
-- on every push to `main` (rebuild on Dockerfile change)
-- weekly on Monday 06:00 UTC (picks up SDK patches + Debian CVEs)
-- on `v*` tags (a stable pin for anyone who doesn't want auto-updates)
-- on demand via `workflow_dispatch`
+The .NET 10 SDK floats with the base image, so the weekly rebuild picks up whatever the latest patch is. The .NET 8 SDK uses `dotnet-install.sh --channel 8.0`, which does the same. If you ever need a pinned 8.x, swap `--channel 8.0` for `--version 8.0.NNN` in the Dockerfile.
 
-## Updating SDKs
+## Setting it up the first time
 
-The .NET 10 SDK floats with the `mcr.microsoft.com/dotnet/sdk:10.0`
-base image; weekly rebuilds pull whatever the latest patch is.
+Two repo secrets:
 
-The .NET 8 SDK is installed via `dotnet-install.sh --channel 8.0` so
-it tracks the latest 8.0.x at rebuild time. To pin a specific version,
-swap `--channel 8.0` for `--version 8.0.NNN` in the Dockerfile.
+- `DOCKERHUB_USERNAME` — `blehnen74`
+- `DOCKERHUB_TOKEN` — a Docker Hub access token with Read, Write, and Delete on `blehnen74/dotnetworkqueue-ci`. Generate one at <https://hub.docker.com/settings/security>.
 
-To bump the .NET 10 base or change the JDK major, edit the `FROM` line
-or the `openjdk-21-jre-headless` package and push to `main`. Tag a
-`vX.Y.Z` release if you want the pinned version published alongside.
-
-## First-time secrets setup
-
-The publish workflow needs two repository secrets:
-
-- `DOCKERHUB_USERNAME` — your Docker Hub login (`blehnen74`)
-- `DOCKERHUB_TOKEN` — a Docker Hub access token with **Read, Write, Delete**
-  on `blehnen74/dotnetworkqueue-ci`. Create at
-  <https://hub.docker.com/settings/security>.
-
-Once both are set, push to `main` (or run `workflow_dispatch`) to
-publish the first image.
+Once both are set, push to `main` (or fire `workflow_dispatch`) and the first image lands on Docker Hub.
