@@ -62,4 +62,12 @@ RUN dotnet --list-sdks
 # this to a per-build path; permissive mode keeps the JNLP agent happy
 # regardless of which uid the controller spawns the container as.
 RUN mkdir -p /home/jenkins && chmod 777 /home/jenkins
+
 WORKDIR /home/jenkins
+
+# Run as a non-root user by default. The base image already ships an
+# unprivileged "ubuntu" user (uid 1000); reuse it rather than creating one.
+# The Docker Cloud plugin may still override the uid when it spawns the
+# container (the world-writable workspace above keeps that case working),
+# but when it does not pin a uid the agent runs as this user instead of root.
+USER ubuntu
