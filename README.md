@@ -1,5 +1,11 @@
 # dotnetworkqueue-ci
 
+[![Build and publish](https://github.com/blehnen/dotnetworkqueue-ci/actions/workflows/publish.yml/badge.svg)](https://github.com/blehnen/dotnetworkqueue-ci/actions/workflows/publish.yml)
+[![Docker image version](https://img.shields.io/docker/v/blehnen74/dotnetworkqueue-ci?sort=semver&logo=docker&logoColor=white)](https://hub.docker.com/r/blehnen74/dotnetworkqueue-ci)
+[![Docker pulls](https://img.shields.io/docker/pulls/blehnen74/dotnetworkqueue-ci)](https://hub.docker.com/r/blehnen74/dotnetworkqueue-ci)
+[![Image size](https://img.shields.io/docker/image-size/blehnen74/dotnetworkqueue-ci?sort=semver)](https://hub.docker.com/r/blehnen74/dotnetworkqueue-ci/tags)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 CI image for [DotNetWorkQueue](https://github.com/blehnen/DotNetWorkQueue). Built and published so my Jenkins on Unraid stops losing the local copy every time the box reboots.
 
 What's in it:
