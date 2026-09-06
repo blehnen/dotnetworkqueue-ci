@@ -58,6 +58,41 @@ RUN multiarch=$(dpkg-architecture -qDEB_HOST_MULTIARCH 2>/dev/null || echo x86_6
 # Sanity check — fails the build if either SDK is missing.
 RUN dotnet --list-sdks
 
+# Playwright browsers for DotNetWorkQueue.Dashboard.Ui.E2E.Tests, installed
+# here while the build is still root. The Jenkins stage used to do this per
+# build with `install --with-deps chromium`, which shells out to apt and
+# therefore needs root - that stopped working the moment this image gained the
+# `USER ubuntu` line below, with "su: Authentication failure".
+#
+# Baking them in is the better place for it regardless: it drops a ~150 MB
+# download and an apt run from every E2E build, and removes a network
+# dependency from the pipeline.
+#
+# PLAYWRIGHT_BROWSERS_PATH puts the browsers outside any user's home, so they
+# are readable whichever uid the Docker Cloud plugin spawns the container as.
+#
+# The version is pinned deliberately, unlike the SDK channels above. Playwright's
+# .NET package and its browser builds ship together, so this MUST match
+# Microsoft.Playwright in DotNetWorkQueue's Source/Directory.Packages.props.
+# A mismatch fails the E2E tests at run time with
+# "Executable doesn't exist at /ms-playwright/chromium-XXXX".
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+RUN mkdir -p /tmp/pw && cd /tmp/pw \
+    && dotnet new console -f net10.0 -o . \
+    && dotnet add package Microsoft.Playwright --version 1.60.0 \
+    && dotnet build -c Release \
+    && dotnet exec --runtimeconfig "$(ls bin/Release/net10.0/*.runtimeconfig.json)" \
+         bin/Release/net10.0/Microsoft.Playwright.dll install --with-deps chromium \
+    && cd / && rm -rf /tmp/pw \
+    && chmod -R a+rX /ms-playwright
+
+# Sanity check - fails the build if the browsers did not land, rather than
+# leaving it to fail per test run three stages into a Jenkins build. The
+# headless shell is checked too: the E2E fixture launches with Headless = true,
+# so that is the binary it actually runs.
+RUN ls -d /ms-playwright/chromium-* > /dev/null \
+    && ls -d /ms-playwright/chromium_headless_shell-* > /dev/null
+
 # Jenkins workspace mount point. The Docker Cloud plugin will rebind
 # this to a per-build path; permissive mode keeps the JNLP agent happy
 # regardless of which uid the controller spawns the container as.
