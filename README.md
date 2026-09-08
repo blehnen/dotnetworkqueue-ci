@@ -14,7 +14,9 @@ What's in it:
 - .NET 8 SDK alongside it, because the Dashboard projects still target `net8.0`
 - OpenJDK 21 JRE, so the Jenkins inbound-agent JAR can launch
 - `git`, `curl`, `openssh-client`, `procps`, `libsqlite3-0`
+- Playwright's chromium + headless-shell browsers at `/ms-playwright`, pinned to match `Microsoft.Playwright` in DotNetWorkQueue
 - A `libdl.so` symlink, because System.Data.SQLite's native loader still dlopens it and Bookworm doesn't ship one
+- A warmed read-only NuGet fallback folder at `/nuget-fallback`, so parallel Jenkins stages resolve packages from the image instead of all hammering nuget.org at once
 
 It's the *workload* image. The Jenkinsfile says `agent { docker { image '...' } }`, this is the `'...'`. The build agent itself (with the Docker CLI baked in) lives over at [jenkins-agent-with-docker](https://github.com/blehnen/jenkins-agent-with-docker).
 

@@ -93,6 +93,47 @@ RUN mkdir -p /tmp/pw && cd /tmp/pw \
 RUN ls -d /ms-playwright/chromium-* > /dev/null \
     && ls -d /ms-playwright/chromium_headless_shell-* > /dev/null
 
+# A read-only NuGet fallback folder, so the sixteen parallel stages of a
+# DotNetWorkQueue build do not each pull the same packages from nuget.org.
+# That burst is why the Jenkinsfile staggers its stages five seconds apart:
+# without the stagger nuget.org rate-limits them and restores fail. This
+# removes the cause rather than pacing around it.
+#
+# A fallback folder rather than a shared global packages folder. Fallback
+# folders are read-only by contract, so every container resolves from this one
+# with no locking at all; sharing a writable global folder across concurrent
+# restores is where NuGet's concurrency caveats live.
+#
+# Nothing is shared at run time, which is what makes this work for throwaway
+# containers: the packages live in an image layer, so each container reads them
+# through its own copy-on-write view of the same layer. Separate instances,
+# one copy of the bytes on the host.
+#
+# Going stale is harmless. Anything not found here is fetched from nuget.org
+# exactly as before, so a dependency bump between weekly rebuilds costs one
+# download, not a broken build. That also means this needs no maintenance when
+# DotNetWorkQueue's dependencies change.
+#
+# The http-cache clear matters: restore keeps a second copy of every .nupkg
+# there, which measured 417 MB of pure dead weight in the layer.
+#
+# Costs about 1.6 GB of image, ~760 MB of which is Microsoft.Playwright. Pulled
+# once per host per tag, against a burst of 16 concurrent restores on every
+# build.
+ENV NUGET_FALLBACK_PACKAGES=/nuget-fallback
+RUN git clone --depth 1 https://github.com/blehnen/DotNetWorkQueue.git /tmp/dnwq \
+    && dotnet restore /tmp/dnwq/Source/DotNetWorkQueue.sln --packages /nuget-fallback \
+    && rm -rf /tmp/dnwq \
+    && dotnet nuget locals http-cache --clear \
+    && dotnet nuget locals temp --clear \
+    && chmod -R a+rX /nuget-fallback
+
+# Sanity check - fails the build if the folder came out empty, rather than
+# leaving every agent to quietly fall back to nuget.org and rediscover the
+# rate limit. Newtonsoft.Json is a direct dependency of the core library, so
+# its absence means the restore did not populate this folder.
+RUN ls -d /nuget-fallback/newtonsoft.json > /dev/null
+
 # Jenkins workspace mount point. The Docker Cloud plugin will rebind
 # this to a per-build path; permissive mode keeps the JNLP agent happy
 # regardless of which uid the controller spawns the container as.
