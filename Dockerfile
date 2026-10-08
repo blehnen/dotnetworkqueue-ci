@@ -79,7 +79,7 @@ RUN dotnet --list-sdks
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 RUN mkdir -p /tmp/pw && cd /tmp/pw \
     && dotnet new console -f net10.0 -o . \
-    && dotnet add package Microsoft.Playwright --version 1.60.0 \
+    && dotnet add package Microsoft.Playwright --version 1.63.0 \
     && dotnet build -c Release \
     && dotnet exec --runtimeconfig "$(ls bin/Release/net10.0/*.runtimeconfig.json)" \
          bin/Release/net10.0/Microsoft.Playwright.dll install --with-deps chromium \
